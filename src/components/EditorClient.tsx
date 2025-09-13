@@ -168,6 +168,7 @@ function Toolbar({
         <button 
           className="h-8 px-2 text-sm text-gray-800 bg-white border rounded hover:bg-gray-100 flex items-center"
           onClick={() => setShowFontDropdown(!showFontDropdown)}
+          type="button"
         >
           <span style={{ fontFamily }} className="truncate max-w-[100px]">
             {fontFamilies.find(f => f.value === fontFamily)?.name || fontFamily}
@@ -179,6 +180,7 @@ function Toolbar({
             {fontFamilies.map((font) => (
               <button
                 key={font.value}
+                type="button"
                 className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${fontFamily === font.value ? 'bg-blue-50 text-blue-600' : 'text-gray-800'}`}
                 style={{ fontFamily: font.value }}
                 onClick={() => handleFontFamilyChange(font.value)}
@@ -195,6 +197,7 @@ function Toolbar({
         <button 
           className="h-8 px-2 text-sm text-gray-800 bg-white border rounded hover:bg-gray-100"
           onClick={() => setShowFontSizeDropdown(!showFontSizeDropdown)}
+          type="button"
         >
           {fontSize} pt
           <span className="material-symbols-outlined text-sm ml-1">arrow_drop_down</span>
@@ -204,6 +207,7 @@ function Toolbar({
             {fontSizes.map((size) => (
               <button
                 key={size}
+                type="button"
                 className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${fontSize === size ? 'bg-blue-50 text-blue-600' : 'text-gray-800'}`}
                 onClick={() => handleFontSizeChange(size)}
               >
@@ -219,6 +223,7 @@ function Toolbar({
       {/* Text Formatting */}
       <div className="flex items-center space-x-1">
         <button
+          type="button"
           className={`p-1 rounded ${isActive('bold') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
           onClick={() => commands.toggleBold()}
           title="Bold (Ctrl+B)"
@@ -226,6 +231,7 @@ function Toolbar({
           <span className="material-symbols-outlined">format_bold</span>
         </button>
         <button
+          type="button"
           className={`p-1 rounded ${isActive('italic') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
           onClick={() => commands.toggleItalic()}
           title="Italic (Ctrl+I)"
@@ -233,6 +239,7 @@ function Toolbar({
           <span className="material-symbols-outlined">format_italic</span>
         </button>
         <button
+          type="button"
           className={`p-1 rounded ${isActive('underline') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
           onClick={() => commands.toggleUnderline()}
           title="Underline (Ctrl+U)"
@@ -240,6 +247,7 @@ function Toolbar({
           <span className="material-symbols-outlined">format_underlined</span>
         </button>
         <button
+          type="button"
           className={`p-1 rounded ${isActive('strike') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
           onClick={() => commands.toggleStrike()}
           title="Strikethrough"
@@ -253,6 +261,7 @@ function Toolbar({
       {/* Text Alignment */}
       <div className="flex items-center space-x-1">
         <button
+          type="button"
           className={`p-1 rounded ${isActive('textAlign', { textAlign: 'left' }) ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
           onClick={() => commands.setTextAlign('left')}
           title="Align left (Ctrl+Shift+L)"
@@ -260,6 +269,7 @@ function Toolbar({
           <span className="material-symbols-outlined">format_align_left</span>
         </button>
         <button
+          type="button"
           className={`p-1 rounded ${isActive('textAlign', { textAlign: 'center' }) ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
           onClick={() => commands.setTextAlign('center')}
           title="Center (Ctrl+Shift+E)"
@@ -267,6 +277,7 @@ function Toolbar({
           <span className="material-symbols-outlined">format_align_center</span>
         </button>
         <button
+          type="button"
           className={`p-1 rounded ${isActive('textAlign', { textAlign: 'right' }) ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
           onClick={() => commands.setTextAlign('right')}
           title="Align right (Ctrl+Shift+R)"
@@ -274,6 +285,7 @@ function Toolbar({
           <span className="material-symbols-outlined">format_align_right</span>
         </button>
         <button
+          type="button"
           className={`p-1 rounded ${isActive('textAlign', { textAlign: 'justify' }) ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
           onClick={() => commands.setTextAlign('justify')}
           title="Justify (Ctrl+Shift+J)"
@@ -287,6 +299,7 @@ function Toolbar({
       {/* Lists */}
       <div className="flex items-center space-x-1">
         <button
+          type="button"
           className={`p-1 rounded ${isActive('bulletList') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
           onClick={() => commands.toggleBulletList()}
           title="Bullet list"
@@ -294,6 +307,7 @@ function Toolbar({
           <span className="material-symbols-outlined">format_list_bulleted</span>
         </button>
         <button
+          type="button"
           className={`p-1 rounded ${isActive('orderedList') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
           onClick={() => commands.toggleOrderedList()}
           title="Numbered list"
@@ -307,6 +321,7 @@ function Toolbar({
       {/* More Formatting */}
       <div className="flex items-center space-x-1">
         <button
+          type="button"
           className={`p-1 rounded ${isActive('link') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
           onClick={() => setShowLinkInput(!showLinkInput)}
           title="Insert link (Ctrl+K)"
@@ -329,6 +344,7 @@ function Toolbar({
           </form>
         )}
         <button
+          type="button"
           className="p-1 rounded hover:bg-gray-100"
           onClick={() => commands.clearFormatting()}
           title="Clear formatting (Ctrl+\")"
@@ -339,6 +355,7 @@ function Toolbar({
 
       <div className="ml-auto flex items-center space-x-1">
         <button
+          type="button"
           className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
           onClick={() => commands.undo()}
           disabled={!editor.can().undo()}
@@ -347,6 +364,7 @@ function Toolbar({
           <span className="material-symbols-outlined">undo</span>
         </button>
         <button
+          type="button"
           className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
           onClick={() => commands.redo()}
           disabled={!editor.can().redo()}
@@ -590,160 +608,9 @@ export default function EditorClient({ docId, title, initialContent, minimal = f
       </div>
     </div>
   );
-}
+};
 
-
-  
-  const base = "h-8 px-2 text-[13px] text-[#202124] hover:bg-gray-100 rounded disabled:text-gray-400 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center";
-  const activeClass = "bg-gray-200 hover:bg-gray-200";
-  const divider = "w-px h-6 bg-gray-300 mx-1";
-  
-  const isActive = (name: string, attributes?: any) => {
-    if (!editor) return false;
-    if (typeof name === 'object') {
-      return editor.isActive(attributes);
-    }
-    return editor.isActive(name, attributes);
-  };
-  
-  const handleLink = () => {
-    const url = prompt('Enter URL:', 'https://');
-    if (url) {
-      commands.toggleLink(url);
-    }
-  };
-
-  const handleColorChange = () => {
-    const color = prompt('Enter color (e.g., #FF0000, blue, rgb(255, 0, 0))', '#000000');
-    if (color) {
-      commands.setColor(color);
-    }
-  };
-
-  const handleHighlight = () => {
-    const color = prompt('Enter highlight color (e.g., #FFFF00, yellow, rgba(255, 255, 0, 0.5))', '#FFFF00');
-    if (color) {
-      commands.setHighlight(color);
-    }
-  };
-  
-  const handleFontFamilyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const font = e.target.value;
-    setFontFamily(font);
-    commands.setFontFamily(font);
-  };
-  
-  const handleFontSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const size = e.target.value;
-    setFontSize(size);
-    commands.setFontSize(`${size}px`);
-  };
-  
-  const fontFamilies = [
-    'Arial', 'Arial Black', 'Comic Sans MS', 'Courier New', 
-    'Georgia', 'Impact', 'Tahoma', 'Times New Roman', 
-    'Trebuchet MS', 'Verdana', 'Roboto', 'Open Sans'
-  ];
-  
-  const fontSizes = [
-    '8', '9', '10', '11', '12', '14', '16', 
-    '18', '20', '22', '24', '26', '28', '30', '36', '48', '72'
-  ];
-
-  return (
-    <div className="flex items-center px-4 py-2 border-b border-gray-200 bg-white shadow-sm">
-      {/* Undo/Redo */}
-      <div className="flex items-center mr-4">
-        <button 
-          className={`w-8 h-8 rounded-full flex items-center justify-center ${!editor?.can().undo() ? 'text-gray-300' : 'text-gray-600 hover:bg-gray-100'}`}
-          onClick={commands.undo}
-          title="Undo (Ctrl+Z)"
-          disabled={!editor?.can().undo()}
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12.5 8c-2.65 0-5.05 1-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
-          </svg>
-        </button>
-        <button 
-          className={`w-8 h-8 rounded-full flex items-center justify-center ml-1 ${!editor?.can().redo() ? 'text-gray-300' : 'text-gray-600 hover:bg-gray-100'}`}
-          onClick={commands.redo}
-          title="Redo (Ctrl+Y)"
-          disabled={!editor?.can().redo()}
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L19 8v9h-9l2.4-2.4z"/>
-          </svg>
-        </button>
-      </div>
-      
-      <div className={divider}></div>
-      
-      {/* Font Family Dropdown */}
-      <div className="relative group ml-2">
-        <button 
-          className={`h-8 px-2 min-w-[120px] text-left text-sm text-gray-800 bg-white border-0 rounded hover:bg-gray-100 flex items-center justify-between ${isActive('textStyle', { fontFamily }) ? 'bg-gray-200' : ''}`}
-          title="Font"
-        >
-          <span style={{ fontFamily }}>{fontFamily}</span>
-          <svg className="w-4 h-4 ml-1 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-          </svg>
-        </button>
-        <div className="absolute group-hover:block bg-white shadow-lg rounded-md mt-1 py-1 z-50 max-h-80 overflow-y-auto w-48">
-          {[
-            { name: 'Arial', value: 'Arial, sans-serif' },
-            { name: 'Arial Black', value: 'Arial Black, sans-serif' },
-            { name: 'Comic Sans MS', value: 'Comic Sans MS, cursive' },
-            { name: 'Courier New', value: 'Courier New, monospace' },
-            { name: 'Georgia', value: 'Georgia, serif' },
-            { name: 'Impact', value: 'Impact, sans-serif' },
-            { name: 'Tahoma', value: 'Tahoma, sans-serif' },
-            { name: 'Times New Roman', value: 'Times New Roman, serif' },
-            { name: 'Trebuchet MS', value: 'Trebuchet MS, sans-serif' },
-            { name: 'Verdana', value: 'Verdana, sans-serif' },
-            { name: 'Roboto', value: 'Roboto, sans-serif' },
-            { name: 'Open Sans', value: 'Open Sans, sans-serif' },
-            { name: 'Lato', value: 'Lato, sans-serif' },
-            { name: 'Montserrat', value: 'Montserrat, sans-serif' },
-            { name: 'Roboto Condensed', value: 'Roboto Condensed, sans-serif' },
-            { name: 'Source Sans Pro', value: 'Source Sans Pro, sans-serif' }
-          ].map((font) => (
-            <button
-              key={font.value}
-              className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${fontFamily === font.value ? 'bg-blue-50 text-blue-600' : 'text-gray-800'}`}
-              onClick={() => {
-                setFontFamily(font.value);
-                commands.setFontFamily(font.value);
-              }}
-              style={{ fontFamily: font.value }}
-            >
-              {font.name}
-            </button>
-          ))}
-        </div>
-      </div>
-      
-      {/* Font Size */}
-      <div className="relative ml-1 mr-2">
-        <select 
-          className="h-8 pl-2 pr-8 text-sm text-gray-800 bg-white border-0 rounded hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          value={fontSize}
-          onChange={handleFontSizeChange}
-          title="Font Size"
-        >
-          {fontSizes.map(size => (
-            <option key={size} value={size}>{size}</option>
-          ))}
-        </select>
-      </div>
-      
-      <div className={divider}></div>
-      
-      {/* Text Formatting */}
-      <div className="flex items-center ml-1">
-        <button 
-          className={`w-8 h-8 rounded flex items-center justify-center ${isActive('bold') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} 
-          onClick={commands.toggleBold}
+export default EditorClient;
           title="Bold (Ctrl+B)"
           disabled={!editor?.can().chain().focus().toggleBold().run()}
         >
