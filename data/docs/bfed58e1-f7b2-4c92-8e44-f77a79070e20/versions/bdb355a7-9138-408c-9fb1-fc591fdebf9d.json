@@ -1,0 +1,11 @@
+{
+  "id": "bdb355a7-9138-408c-9fb1-fc591fdebf9d",
+  "createdAt": "2025-09-13T18:56:59.541Z",
+  "author": "Test User",
+  "ai": {
+    "flagged": false,
+    "confidence": 0,
+    "reasons": []
+  },
+  "content": "{\"type\":\"doc\",\"content\":[]}"
+}

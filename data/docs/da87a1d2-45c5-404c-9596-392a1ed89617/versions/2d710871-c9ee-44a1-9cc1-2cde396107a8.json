@@ -1,0 +1,12 @@
+{
+  "id": "2d710871-c9ee-44a1-9cc1-2cde396107a8",
+  "createdAt": "2025-09-13T16:03:37.408Z",
+  "ai": {
+    "flagged": false,
+    "confidence": 0.25,
+    "reasons": [
+      "Low sentence length variance"
+    ]
+  },
+  "content": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"attrs\":{\"textAlign\":\"left\"},\"content\":[{\"type\":\"text\",\"marks\":[{\"type\":\"bold\"},{\"type\":\"italic\"}],\"text\":\"asd jnjjhjhj\"}]}]}"
+}

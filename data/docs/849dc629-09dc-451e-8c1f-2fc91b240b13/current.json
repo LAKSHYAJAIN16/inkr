@@ -1,0 +1,12 @@
+{
+  "id": "02ee8e76-1538-477e-bb95-9a57ee5eac84",
+  "createdAt": "2025-09-12T17:14:16.723Z",
+  "ai": {
+    "flagged": false,
+    "confidence": 0.25,
+    "reasons": [
+      "Low sentence length variance"
+    ]
+  },
+  "content": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"attrs\":{\"textAlign\":null}}]}"
+}
