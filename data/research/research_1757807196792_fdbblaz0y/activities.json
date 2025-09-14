@@ -1,0 +1,18 @@
+[
+  {
+    "id": "activity_1757807217271_k7x4dh7k2",
+    "timestamp": "2025-09-13T23:46:57.271Z",
+    "type": "navigation",
+    "data": {
+      "url": "https://api.allorigins.win/raw?url=https%3A%2F%2Fwww.google.com%2Fwebhp%3Figu%3D1"
+    }
+  },
+  {
+    "id": "activity_1757807218955_ryj8wpm34",
+    "timestamp": "2025-09-13T23:46:58.955Z",
+    "type": "navigation",
+    "data": {
+      "url": "https://api.allorigins.win/raw?url=https%3A%2F%2Fapi.allorigins.win%2Fraw%3Furl%3Dhttps%253A%252F%252Fwww.google.com%252Fwebhp%253Figu%253D1"
+    }
+  }
+]

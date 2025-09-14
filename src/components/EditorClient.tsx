@@ -13,812 +13,722 @@ import BulletList from "@tiptap/extension-bullet-list";
 import OrderedList from "@tiptap/extension-ordered-list";
 import ListItem from "@tiptap/extension-list-item";
 import { FontFamily } from "@tiptap/extension-font-family";
+import Toolbar from "./Toolbar";
+import { db } from "@/lib/firebase";
+import { doc, onSnapshot, setDoc, serverTimestamp, getDoc, addDoc, collection, query, orderBy, limit, getDocs, type DocumentSnapshot, type DocumentData } from "firebase/firestore";
+import Image from '@tiptap/extension-image'
+import ImageResize from 'tiptap-extension-resize-image';
 
-// Code block syntax highlighting can be added later. Keeping minimal to avoid SSR issues.
+// Types
+type Props = { docId: string; title?: string; initialContent: string; minimal?: boolean; };
 
-type Props = {
-  docId: string;
+// Simple divider
+const Divider = () => <div className="w-px h-6 bg-gray-300 mx-1"></div>;
+
+// TopBar with File hover menu
+function TopBar({ title, onTitleChange, onPrint, onExportPdf, onExportDocx, onToggleHistory, savingState, onInsertImageFile, onInsertImageUrl, onGenerateCitations }: {
   title?: string;
-  initialContent: string;
-  minimal?: boolean;
-};
-
-type EditorCommands = {
-  undo: () => void;
-  redo: () => void;
-  toggleBold: () => void;
-  toggleItalic: () => void;
-  toggleUnderline: () => void;
-  toggleStrike: () => void;
-  toggleBulletList: () => void;
-  toggleOrderedList: () => void;
-  setHeading: (level: 1 | 2 | 3) => void;
-  setParagraph: () => void;
-  setTextAlign: (alignment: 'left' | 'center' | 'right' | 'justify') => void;
-  setFontFamily: (fontFamily: string) => void;
-  setFontSize: (fontSize: string) => void;
-  setColor: (color: string) => void;
-  setHighlight: (color: string) => void;
-  toggleLink: (url: string) => void;
-  clearFormatting: () => void;
-  align: (value: "left" | "center" | "right" | "justify") => void;
-};
-
-// Simple divider for the toolbar
-const Divider = () => (
-  <div className="w-px h-6 bg-gray-300 mx-1"></div>
-);
-
-// Top bar component
-function TopBar({ title }: { title?: string }) {
-  return (
-    <div className="h-12 px-3 flex items-center gap-3 bg-white border-b">
-      <span className="material-symbols-outlined text-[#1a73e8]">description</span>
-      <div className="text-[15px] text-gray-800 font-medium truncate max-w-[40%]">
-        {title || 'Untitled Document'}
-      </div>
-      <div className="ml-auto flex items-center gap-3 text-gray-600">
-        <button className="h-8 px-4 rounded-full bg-[#1a73e8] text-white text-sm">Share</button>
-        <span className="material-symbols-outlined">account_circle</span>
-      </div>
-    </div>
-  );
-}
-
-// Menu bar component
-function MenuBar() {
-  const item = "px-2 py-2 text-[13px] text-gray-700 hover:bg-gray-100 rounded";
-  return (
-    <div className="h-10 px-2 flex items-center gap-1 bg-white">
-      {['File','Edit','View','Insert','Format','Tools','Extensions','Help'].map((m) => (
-        <button key={m} className={item}>{m}</button>
-      ))}
-    </div>
-  );
-}
-
-// Ruler component
-function Ruler() {
-  return (
-    <div className="h-9 px-4 flex items-center bg-[#f8f9fa] border-b border-t">
-      <div className="text-xs text-gray-500">
-        <span className="mr-4">Page 1 of 1</span>
-        <span>0 words</span>
-      </div>
-      <div className="ml-auto flex items-center gap-2">
-        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded">
-          <span className="material-symbols-outlined text-lg">zoom_out</span>
-        </button>
-        <div className="text-xs text-gray-500 w-10 text-center">100%</div>
-        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded">
-          <span className="material-symbols-outlined text-lg">zoom_in</span>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Toolbar component with all formatting options
-function Toolbar({ 
-  editor, 
-  commands, 
-  isActive 
-}: { 
-  editor: any; 
-  commands: EditorCommands; 
-  isActive: (name: string, attributes?: Record<string, any>) => boolean;
+  onTitleChange?: (t: string) => void;
+  onPrint?: () => void;
+  onExportPdf?: () => void;
+  onExportDocx?: () => void;
+  onToggleHistory?: () => void;
+  savingState?: 'idle' | 'saving' | 'saved';
+  onInsertImageFile?: (file: File) => void;
+  onInsertImageUrl?: (url: string) => void;
+  onGenerateCitations?: () => void;
 }) {
-  const [fontFamily, setFontFamily] = useState('Arial');
-  const [fontSize, setFontSize] = useState('14px');
-  const [showFontDropdown, setShowFontDropdown] = useState(false);
-  const [showFontSizeDropdown, setShowFontSizeDropdown] = useState(false);
-  const [showLinkInput, setShowLinkInput] = useState(false);
-  const [linkUrl, setLinkUrl] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(title || 'Untitled Document');
+  const [inputWidth, setInputWidth] = useState(150);
+  const [showFileMenu, setShowFileMenu] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const fileMenuRef = useRef<HTMLDivElement | null>(null);
+  const exportMenuTimer = useRef<number | null>(null);
 
-  const fontSizes = [
-    '8', '9', '10', '11', '12', '14', '16', '18', '20', '22', '24', '26', '28', '36', '48', '72'
-  ];
-
-  const fontFamilies = [
-    { name: 'Arial', value: 'Arial, sans-serif' },
-    { name: 'Arial Black', value: 'Arial Black, sans-serif' },
-    { name: 'Comic Sans MS', value: 'Comic Sans MS, cursive' },
-    { name: 'Courier New', value: 'Courier New, monospace' },
-    { name: 'Georgia', value: 'Georgia, serif' },
-    { name: 'Impact', value: 'Impact, sans-serif' },
-    { name: 'Tahoma', value: 'Tahoma, sans-serif' },
-    { name: 'Times New Roman', value: 'Times New Roman, serif' },
-    { name: 'Trebuchet MS', value: 'Trebuchet MS, sans-serif' },
-    { name: 'Verdana', value: 'Verdana, sans-serif' },
-    { name: 'Roboto', value: 'Roboto, sans-serif' },
-    { name: 'Open Sans', value: 'Open Sans, sans-serif' },
-    { name: 'Lato', value: 'Lato, sans-serif' },
-    { name: 'Montserrat', value: 'Montserrat, sans-serif' },
-    { name: 'Roboto Condensed', value: 'Roboto Condensed, sans-serif' },
-    { name: 'Source Sans Pro', value: 'Source Sans Pro, sans-serif' }
-  ];
-
-  const handleFontFamilyChange = (font: string) => {
-    commands.setFontFamily(font);
-    setFontFamily(font);
-    setShowFontDropdown(false);
-  };
-
-  const handleFontSizeChange = (size: string) => {
-    commands.setFontSize(size);
-    setFontSize(size);
-    setShowFontSizeDropdown(false);
-  };
-
-  const handleLinkSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (linkUrl) {
-      commands.toggleLink(linkUrl);
+  const openExportMenu = () => {
+    if (exportMenuTimer.current) {
+      window.clearTimeout(exportMenuTimer.current);
+      exportMenuTimer.current = null;
     }
-    setShowLinkInput(false);
-    setLinkUrl('');
+    setShowExportMenu(true);
   };
 
-  if (!editor) return null;
+  const scheduleCloseExportMenu = () => {
+    if (exportMenuTimer.current) window.clearTimeout(exportMenuTimer.current);
+    exportMenuTimer.current = window.setTimeout(() => {
+      setShowExportMenu(false);
+      exportMenuTimer.current = null;
+    }, 180);
+  };
+
+  // Close file menu on outside click
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (!fileMenuRef.current) return;
+      if (!fileMenuRef.current.contains(e.target as Node)) {
+        setShowFileMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  const handleTitleClick = () => {
+    setIsEditing(true);
+    setEditTitle(title || 'Untitled Document');
+    setInputWidth(Math.max((title?.length || 15) * 11, 150));
+  };
+
+  const handleTitleSubmit = () => {
+    setIsEditing(false);
+    if (onTitleChange && editTitle.trim()) onTitleChange(editTitle.trim());
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleTitleSubmit();
+    if (e.key === 'Escape') { setIsEditing(false); setEditTitle(title || 'Untitled Document'); }
+  };
 
   return (
-    <div className="h-10 px-3 flex items-center bg-white border-b border-t">
-      {/* Font Family */}
-      <div className="relative mr-2">
-        <button 
-          className="h-8 px-2 text-sm text-gray-800 bg-white border rounded hover:bg-gray-100 flex items-center"
-          onClick={() => setShowFontDropdown(!showFontDropdown)}
-          type="button"
-        >
-          <span style={{ fontFamily }} className="truncate max-w-[100px]">
-            {fontFamilies.find(f => f.value === fontFamily)?.name || fontFamily}
-          </span>
-          <span className="material-symbols-outlined text-sm ml-1">arrow_drop_down</span>
-        </button>
-        {showFontDropdown && (
-          <div className="absolute z-10 mt-1 w-48 bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-y-auto">
-            {fontFamilies.map((font) => (
-              <button
-                key={font.value}
-                type="button"
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${fontFamily === font.value ? 'bg-blue-50 text-blue-600' : 'text-gray-800'}`}
-                style={{ fontFamily: font.value }}
-                onClick={() => handleFontFamilyChange(font.value)}
-              >
-                {font.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Font Size */}
-      <div className="relative mr-2">
-        <button 
-          className="h-8 px-2 text-sm text-gray-800 bg-white border rounded hover:bg-gray-100"
-          onClick={() => setShowFontSizeDropdown(!showFontSizeDropdown)}
-          type="button"
-        >
-          {fontSize} pt
-          <span className="material-symbols-outlined text-sm ml-1">arrow_drop_down</span>
-        </button>
-        {showFontSizeDropdown && (
-          <div className="absolute z-10 mt-1 w-20 bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-y-auto">
-            {fontSizes.map((size) => (
-              <button
-                key={size}
-                type="button"
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${fontSize === size ? 'bg-blue-50 text-blue-600' : 'text-gray-800'}`}
-                onClick={() => handleFontSizeChange(size)}
-              >
-                {size}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <Divider />
-
-      {/* Text Formatting */}
-      <div className="flex items-center space-x-1">
-        <button
-          type="button"
-          className={`p-1 rounded ${isActive('bold') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
-          onClick={() => commands.toggleBold()}
-          title="Bold (Ctrl+B)"
-        >
-          <span className="material-symbols-outlined">format_bold</span>
-        </button>
-        <button
-          type="button"
-          className={`p-1 rounded ${isActive('italic') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
-          onClick={() => commands.toggleItalic()}
-          title="Italic (Ctrl+I)"
-        >
-          <span className="material-symbols-outlined">format_italic</span>
-        </button>
-        <button
-          type="button"
-          className={`p-1 rounded ${isActive('underline') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
-          onClick={() => commands.toggleUnderline()}
-          title="Underline (Ctrl+U)"
-        >
-          <span className="material-symbols-outlined">format_underlined</span>
-        </button>
-        <button
-          type="button"
-          className={`p-1 rounded ${isActive('strike') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
-          onClick={() => commands.toggleStrike()}
-          title="Strikethrough"
-        >
-          <span className="material-symbols-outlined">strikethrough_s</span>
-        </button>
-      </div>
-
-      <Divider />
-
-      {/* Text Alignment */}
-      <div className="flex items-center space-x-1">
-        <button
-          type="button"
-          className={`p-1 rounded ${isActive('textAlign', { textAlign: 'left' }) ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
-          onClick={() => commands.setTextAlign('left')}
-          title="Align left (Ctrl+Shift+L)"
-        >
-          <span className="material-symbols-outlined">format_align_left</span>
-        </button>
-        <button
-          type="button"
-          className={`p-1 rounded ${isActive('textAlign', { textAlign: 'center' }) ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
-          onClick={() => commands.setTextAlign('center')}
-          title="Center (Ctrl+Shift+E)"
-        >
-          <span className="material-symbols-outlined">format_align_center</span>
-        </button>
-        <button
-          type="button"
-          className={`p-1 rounded ${isActive('textAlign', { textAlign: 'right' }) ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
-          onClick={() => commands.setTextAlign('right')}
-          title="Align right (Ctrl+Shift+R)"
-        >
-          <span className="material-symbols-outlined">format_align_right</span>
-        </button>
-        <button
-          type="button"
-          className={`p-1 rounded ${isActive('textAlign', { textAlign: 'justify' }) ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
-          onClick={() => commands.setTextAlign('justify')}
-          title="Justify (Ctrl+Shift+J)"
-        >
-          <span className="material-symbols-outlined">format_align_justify</span>
-        </button>
-      </div>
-
-      <Divider />
-
-      {/* Lists */}
-      <div className="flex items-center space-x-1">
-        <button
-          type="button"
-          className={`p-1 rounded ${isActive('bulletList') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
-          onClick={() => commands.toggleBulletList()}
-          title="Bullet list"
-        >
-          <span className="material-symbols-outlined">format_list_bulleted</span>
-        </button>
-        <button
-          type="button"
-          className={`p-1 rounded ${isActive('orderedList') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
-          onClick={() => commands.toggleOrderedList()}
-          title="Numbered list"
-        >
-          <span className="material-symbols-outlined">format_list_numbered</span>
-        </button>
-      </div>
-
-      <Divider />
-
-      {/* More Formatting */}
-      <div className="flex items-center space-x-1">
-        <button
-          type="button"
-          className={`p-1 rounded ${isActive('link') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
-          onClick={() => setShowLinkInput(!showLinkInput)}
-          title="Insert link (Ctrl+K)"
-        >
-          <span className="material-symbols-outlined">link</span>
-        </button>
-        {showLinkInput && (
-          <form onSubmit={handleLinkSubmit} className="absolute z-10 mt-1 p-2 bg-white border rounded shadow-lg">
+    <div className="px-4 py-4 bg-white">
+      <div className="flex items-center gap-3">
+        <span className="material-symbols-outlined text-[#1a73e8]" style={{ fontSize: '36px' }}>description</span>
+        <div className="flex flex-col text-[18px] text-gray-800">
+          {isEditing ? (
             <input
               type="text"
-              value={linkUrl}
-              onChange={(e) => setLinkUrl(e.target.value)}
-              placeholder="Enter URL"
-              className="p-1 border rounded"
+              value={editTitle}
+              onChange={e => { setEditTitle(e.target.value); setInputWidth(Math.max(e.target.value.length * 11, 150)); }}
+              onBlur={handleTitleSubmit}
+              onKeyDown={handleKeyDown}
+              className="bg-transparent border border-blue-500 rounded px-1 py-0.5 outline-none focus:outline-none text-[18px] font-bold"
+              style={{ width: `${inputWidth}px`, minHeight: '1.5rem' }}
               autoFocus
             />
-            <button type="submit" className="ml-2 px-2 py-1 bg-blue-500 text-white rounded">
-              Apply
-            </button>
-          </form>
-        )}
-        <button
-          type="button"
-          className="p-1 rounded hover:bg-gray-100"
-          onClick={() => commands.clearFormatting()}
-          title="Clear formatting (Ctrl+\")"
-        >
-          <span className="material-symbols-outlined">format_clear</span>
-        </button>
-      </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <p className="border border-transparent hover:bg-gray-100 hover:border-gray-300 rounded px-1 py-0.5 cursor-pointer font-bold" onClick={handleTitleClick}>
+                {title || 'Untitled Document'}
+              </p>
+              {/* Saving / Saved indicator */}
+              {savingState && savingState !== 'idle' && (
+                <div className="flex items-center gap-1 text-xs text-gray-500">
+                  {savingState === 'saving' ? (
+                    <svg className="animate-spin h-3 w-3 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                    </svg>
+                  ) : (
+                    <span className="material-symbols-outlined text-[16px] text-green-600">check_circle</span>
+                  )}
+                  <span>{savingState === 'saving' ? 'Saving…' : 'Saved'}</span>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="-ml-3 flex items-center gap-0">
+            {/* File menu with dropdown and Export submenu */}
+            <div className="relative" ref={fileMenuRef} onMouseEnter={() => setShowFileMenu(true)}>
+              <button
+                className="px-3 text-[13px] text-gray-800 hover:bg-gray-100 rounded cursor-pointer"
+                onClick={() => setShowFileMenu(v => !v)}
+              >
+                File
+              </button>
+              {showFileMenu && (
+                <div className="absolute left-0 mt-1 w-44 bg-white border border-gray-200 rounded shadow-md z-30 py-1 cursor-pointer text-xs">
+                  <button
+                    className="w-full text-left px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                    onClick={() => {
+                      setShowFileMenu(false);
+                      onPrint?.();
+                    }}
+                  >
+                    Print
+                  </button>
+                  <div
+                    className="relative"
+                    onMouseEnter={openExportMenu}
+                    onMouseLeave={scheduleCloseExportMenu}
+                  >
+                    <button className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center justify-between cursor-pointer">
+                      <span>Export</span>
+                      <span className="material-symbols-outlined text-sm">chevron_right</span>
+                    </button>
+                    {showExportMenu && (
+                      <div
+                        className="absolute top-0 left-full ml-1 w-44 bg-white border border-gray-200 rounded shadow-md z-40 py-1 cursor-pointer text-xs"
+                        onMouseEnter={openExportMenu}
+                        onMouseLeave={scheduleCloseExportMenu}
+                      >
+                        <button
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                          onClick={() => {
+                            setShowFileMenu(false);
+                            setShowExportMenu(false);
+                            onExportPdf?.();
+                          }}
+                        >
+                          .pdf
+                        </button>
+                        <button
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                          onClick={() => {
+                            setShowFileMenu(false);
+                            setShowExportMenu(false);
+                            onExportDocx?.();
+                          }}
+                        >
+                          .docx
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* Insert dropdown */}
+            <InsertMenu onInsertImageFile={onInsertImageFile} onInsertImageUrl={onInsertImageUrl} />
 
-      <div className="ml-auto flex items-center space-x-1">
-        <button
-          type="button"
-          className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
-          onClick={() => commands.undo()}
-          disabled={!editor.can().undo()}
-          title="Undo (Ctrl+Z)"
-        >
-          <span className="material-symbols-outlined">undo</span>
-        </button>
-        <button
-          type="button"
-          className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
-          onClick={() => commands.redo()}
-          disabled={!editor.can().redo()}
-          title="Redo (Ctrl+Y)"
-        >
-          <span className="material-symbols-outlined">redo</span>
-        </button>
+            {/* Tools dropdown (Generate citations) */}
+            <ToolsMenu onGenerateCitations={onGenerateCitations} />
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-3 text-gray-600">
+          <button
+            type="button"
+            className="h-8 px-3 rounded text-[13px] text-gray-800 hover:bg-gray-100 cursor-pointer"
+            onClick={onToggleHistory}
+            title="History"
+          >
+            History
+          </button>
+          <span className="material-symbols-outlined cursor-pointer" style={{ fontSize: '24px' }}>account_circle</span>
+        </div>
       </div>
     </div>
   );
 }
 
-export default function EditorClient({ docId, title, initialContent, minimal = false }: Props) {
-  const saveTimeout = useRef<NodeJS.Timeout | null>(null);
-  const [fontFamily, setFontFamily] = useState('Arial');
-  const [fontSize, setFontSize] = useState('14px');
-  const [commands, setCommands] = useState<EditorCommands>({
-    undo: () => {},
-    redo: () => {},
-    toggleBold: () => {},
-    toggleItalic: () => {},
-    toggleUnderline: () => {},
-    toggleStrike: () => {},
-    toggleBulletList: () => {},
-    toggleOrderedList: () => {},
-    setHeading: () => {},
-    setParagraph: () => {},
-    setTextAlign: () => {},
-    setFontFamily: () => {},
-    setFontSize: () => {},
-    setColor: () => {},
-    setHighlight: () => {},
-    toggleLink: () => {},
-    clearFormatting: () => {},
-    align: () => {},
-  });
-  
+// Tools dropdown component
+function ToolsMenu({ onGenerateCitations }: { onGenerateCitations?: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative" onMouseLeave={() => setOpen(false)}>
+      <button
+        className="px-3 text-[13px] text-gray-800 hover:bg-gray-100 rounded cursor-pointer"
+        onMouseEnter={() => setOpen(true)}
+        onClick={() => setOpen(v => !v)}
+      >
+        Tools
+      </button>
+      {open && (
+        <div className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded shadow-md z-30 py-1 text-xs">
+          <button
+            className="w-full text-left px-3 py-2 hover:bg-gray-50 cursor-pointer"
+            onClick={() => {
+              onGenerateCitations?.();
+              setOpen(false);
+            }}
+          >
+            Generate citations
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Insert dropdown component for TopBar
+function InsertMenu({ onInsertImageFile, onInsertImageUrl }: { onInsertImageFile?: (file: File) => void; onInsertImageUrl?: (url: string) => void; }) {
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  return (
+    <div className="relative" onMouseLeave={() => setOpen(false)}>
+      <button
+        className="px-3 text-[13px] text-gray-800 hover:bg-gray-100 rounded"
+        onMouseEnter={() => setOpen(true)}
+        onClick={() => setOpen(v => !v)}
+      >
+        Insert
+      </button>
+      {open && (
+        <div className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded shadow-md z-30 py-1 text-xs">
+          <button
+            className="w-full text-left px-3 py-2 hover:bg-gray-50"
+            onClick={() => inputRef.current?.click()}
+          >
+            Upload image
+          </button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file && onInsertImageFile) onInsertImageFile(file);
+              e.currentTarget.value = '';
+              setOpen(false);
+            }}
+          />
+          <button
+            className="w-full text-left px-3 py-2 hover:bg-gray-50"
+            onClick={() => {
+              const url = prompt('Enter image URL');
+              if (url && onInsertImageUrl) onInsertImageUrl(url);
+              setOpen(false);
+            }}
+          >
+            Insert image link
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Trigger native browser print dialog using a hidden iframe
+function triggerNativePrint(html: string) {
+  // Create hidden iframe
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) return;
+
+  doc.open();
+  doc.write(`<!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Print</title>
+        <style>
+          @page { margin: 1in; }
+          body { font-family: Arial, sans-serif; color: #000; }
+          .ProseMirror { max-width: 700px; margin: 0 auto; }
+          img { max-width: 100%; }
+          /* Optional: basic typography */
+          h1,h2,h3,h4,h5,h6 { page-break-after: avoid; }
+          p, li { orphans: 3; widows: 3; }
+        </style>
+      </head>
+      <body>${html}</body>
+    </html>`);
+  doc.close();
+
+  const onLoad = () => {
+    // Give the browser a tick to render before printing
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      // Cleanup after a short delay to avoid interfering with the dialog
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+      }, 1000);
+    }, 50);
+  };
+
+  // If the iframe document supports onload
+  if (iframe.contentWindow) {
+    iframe.onload = onLoad;
+  } else {
+    // Fallback: call directly
+    onLoad();
+  }
+}
+
+// Main EditorClient
+export default function EditorClient({ docId, title, initialContent, minimal=false }: Props) {
+  const saveTimeout = useRef<NodeJS.Timeout|null>(null);
+  const [documentTitle, setDocumentTitle] = useState(title||'Untitled Document');
+  const localSaveRef = useRef(false);
+  const prevPlainTextRef = useRef<string>("");
+  const prevContentJsonRef = useRef<any>(null);
+  // Buffered keystrokes captured between saves
+  const keystrokeBufferRef = useRef<Array<{ t: number; k: string; mods?: { ctrl?: boolean; alt?: boolean; shift?: boolean; meta?: boolean }; sel?: { from: number; to: number } }>>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [versions, setVersions] = useState<Array<{ id: string; createdAt?: any; plainText?: string; diffSummary?: any; keystrokes?: any[] }>>([]);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [savingState, setSavingState] = useState<'idle'|'saving'|'saved'>('idle');
+  const lastVersionWriteRef = useRef<number>(0);
+
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
-        bulletList: false,
-        orderedList: false,
-        listItem: false,
-      }),
+      StarterKit,
       Underline,
       Highlight,
       TextStyle,
       Color,
-      FontFamily.configure({
-        types: ['textStyle'],
-      }),
-      TextAlign.configure({
-        types: ['heading', 'paragraph'],
-      }),
-      BulletList.configure({
-        HTMLAttributes: {
-          class: 'list-disc pl-6',
-        },
-      }),
-      OrderedList.configure({
-        HTMLAttributes: {
-          class: 'list-decimal pl-6',
-        },
-      }),
+      FontFamily.configure({ types: ['textStyle'] }),
+      TextAlign.configure({ types: ['heading','paragraph'] }),
+      BulletList,
+      OrderedList,
       ListItem,
-      Link.configure({
-        openOnClick: true,
-        HTMLAttributes: {
-          class: 'text-blue-500 hover:underline',
-        },
-      }),
+      Image,
+      ImageResize,
+      Link.configure({ openOnClick:true }),
       Placeholder.configure({ placeholder: 'Start writing…' }),
     ],
-    content: initialContent ? JSON.parse(initialContent) : { type: "doc", content: [] },
+    content: initialContent ? JSON.parse(initialContent) : { type:"doc", content: [] },
     autofocus: true,
-    // Configure editor properties with proper SSR handling
-    editorProps: {
-      attributes: {
-        class: minimal
-          ? "block w-full min-h-screen p-8 text-[15px] leading-7 outline-none focus:outline-none caret-black"
-          : "prose max-w-none outline-none focus:outline-none",
-        style: "white-space: pre-wrap;",
-      },
-    },
-    // Ensure the editor doesn't try to render on the server
+    editorProps: { attributes: { class: minimal ? "block w-full min-h-screen p-8 text-[15px] leading-7 outline-none caret-black" : "prose max-w-none outline-none" } },
     onUpdate: () => scheduleSave(),
-    // Explicitly set to false to prevent hydration issues
     immediatelyRender: false,
   });
 
-  useEffect(() => {
-    return () => {
-      if (saveTimeout.current) clearTimeout(saveTimeout.current);
+  // Insert helpers for TopBar Insert menu
+  const handleInsertImageFile = useCallback((file: File) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = reader.result as string;
+      editor?.chain().focus().setImage({ src }).run();
     };
-  }, []);
-
-  const scheduleSave = useCallback(() => {
-    if (saveTimeout.current) clearTimeout(saveTimeout.current);
-    saveTimeout.current = setTimeout(() => {
-      void save();
-    }, 1000);
+    reader.readAsDataURL(file);
   }, [editor]);
 
-  const plainText = useMemo(() => editor?.getText() || "", [editor]);
+  const handleInsertImageUrl = useCallback((url: string) => {
+    if (!url || !url.trim()) return;
+    editor?.chain().focus().setImage({ src: url.trim() }).run();
+  }, [editor]);
 
-  async function save() {
-    if (!editor) return;
-    const json = JSON.stringify(editor.getJSON());
-    await fetch(`/api/docs/${docId}/versions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: json, plainText: plainText.slice(0, 20000) }),
-    });
-  }
+  // Simple Generate Citations stub: prompts for a URL/DOI and inserts a link at cursor
+  const handleGenerateCitations = useCallback(() => {
+    const url = prompt('Enter a URL or DOI to cite');
+    if (!url || !url.trim()) return;
+    const text = `Citation: ${url.trim()}`;
+    editor?.chain().focus().insertContent(text).setTextSelection({ from: editor.state.selection.from, to: editor.state.selection.from + text.length }).run();
+  }, [editor]);
 
-  // Register commands to outer toolbar when editor is ready
-  const registerCommands = useCallback((editor: any): EditorCommands => {
-    if (!editor) return {
-      undo: () => {},
-      redo: () => {},
-      toggleBold: () => {},
-      toggleItalic: () => {},
-      toggleUnderline: () => {},
-      toggleStrike: () => {},
-      toggleBulletList: () => {},
-      toggleOrderedList: () => {},
-      setHeading: () => {},
-      setParagraph: () => {},
-      setTextAlign: () => {},
-      setFontFamily: () => {},
-      setFontSize: () => {},
-      setColor: () => {},
-      setHighlight: () => {},
-      toggleLink: () => {},
-      clearFormatting: () => {},
-      align: () => {},
-    };
-    
-    const commands: EditorCommands = {
-      undo: () => editor.chain().focus().undo().run(),
-      redo: () => editor.chain().focus().redo().run(),
-      toggleBold: () => editor.chain().focus().toggleBold().run(),
-      toggleItalic: () => editor.chain().focus().toggleItalic().run(),
-      toggleUnderline: () => editor.chain().focus().toggleUnderline().run(),
-      toggleStrike: () => editor.chain().focus().toggleStrike().run(),
-      toggleBulletList: () => editor.chain().focus().toggleBulletList().run(),
-      toggleOrderedList: () => editor.chain().focus().toggleOrderedList().run(),
-      setHeading: (level: number) => editor.chain().focus().setHeading({ level }).run(),
-      setParagraph: () => editor.chain().focus().setParagraph().run(),
-      setTextAlign: (alignment: 'left' | 'center' | 'right' | 'justify') => {
-        if (alignment === 'left') return editor.chain().focus().setTextAlign('left').run();
-        if (alignment === 'center') return editor.chain().focus().setTextAlign('center').run();
-        if (alignment === 'right') return editor.chain().focus().setTextAlign('right').run();
-        if (alignment === 'justify') return editor.chain().focus().setTextAlign('justify').run();
-        return false;
-      },
-      setFontFamily: (font: string) => {
-        editor.chain().focus().setFontFamily(font).run();
-        setFontFamily(font);
-        return true;
-      },
-      setFontSize: (size: string) => {
-        editor.chain().focus().setFontSize(size).run();
-        setFontSize(size);
-        return true;
-      },
-      setColor: (color: string) => editor.chain().focus().setColor(color).run(),
-      setHighlight: (color: string) => editor.chain().focus().setHighlight({ color }).run(),
-      toggleLink: (url: string) => {
-        if (url) {
-          return editor.chain().focus().setLink({ href: url }).run();
-        } else {
-          return editor.chain().focus().unsetLink().run();
-        }
-      },
-      clearFormatting: () => editor.chain().focus().clearNodes().unsetAllMarks().run(),
-      align: (alignment: 'left' | 'center' | 'right' | 'justify') => {
-        return editor.chain().focus().setTextAlign(alignment).run();
-      },
-    };
-    
-    return commands;
-  }, []);
-
-  const register = useRegisterCommands();
-  
+  // Attach keydown listener to capture keystrokes
   useEffect(() => {
     if (!editor) return;
-    
-    const commands = registerCommands(editor);
-    
-    // Add the align command to the commands object
-    const fullCommands = {
-      ...commands,
-      align: (v: 'left' | 'center' | 'right' | 'justify') => 
-        editor.chain().focus().setTextAlign(v).run()
+    const handler = (e: KeyboardEvent) => {
+      // Ignore very noisy keys like CapsLock or pure modifier presses
+      const ignorable = ["CapsLock", "NumLock", "ScrollLock", "Shift", "Control", "Alt", "Meta"];
+      if (ignorable.includes(e.key)) return;
+      const sel = editor.state.selection;
+      const entry = {
+        t: Date.now(),
+        k: e.key,
+        mods: { ctrl: e.ctrlKey || undefined, alt: e.altKey || undefined, shift: e.shiftKey || undefined, meta: e.metaKey || undefined },
+        sel: { from: sel.from, to: sel.to },
+      };
+      const buf = keystrokeBufferRef.current;
+      buf.push(entry);
+      // Cap buffer to reasonable size to avoid unbounded growth
+      if (buf.length > 1000) buf.splice(0, buf.length - 1000);
     };
-    
-    register(fullCommands);
-  }, [editor, register, registerCommands]);
+    const dom = editor.view.dom as HTMLElement;
+    dom.addEventListener('keydown', handler, { capture: true });
+    return () => {
+      dom.removeEventListener('keydown', handler, { capture: true } as any);
+    };
+  }, [editor]);
 
-  // Check if a command is currently active
-  const isActive = (name: string, attributes?: Record<string, any>) => {
-    if (!editor) return false;
-    
-    if (name === 'heading') {
-      return editor.isActive('heading', { level: attributes?.level });
+  const scheduleSave = useCallback(() => {
+    if(saveTimeout.current) clearTimeout(saveTimeout.current);
+    saveTimeout.current = setTimeout(() => { void save(); }, 400);
+  }, [editor]);
+
+  async function save() {
+    if(!editor) return;
+    setSavingState('saving');
+    const contentJson = editor.getJSON();
+    const plainText = editor.getText().slice(0, 20000);
+    const ref = doc(db, 'docs', docId);
+    localSaveRef.current = true;
+    await setDoc(ref, {
+      title: documentTitle || 'Untitled Document',
+      author: null,
+      // Streamlined frequent save payload
+      content: contentJson,
+      plainText,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    // release the local save flag shortly after to allow remote updates
+    setTimeout(() => { localSaveRef.current = false; }, 200);
+
+    // Write a version entry for deep history
+    try {
+      const versionsCol = collection(ref, 'versions');
+      const prev = prevPlainTextRef.current || '';
+      const prevLen = prev.length;
+      const newLen = plainText.length;
+      const prevWords = prev.trim() ? prev.trim().split(/\s+/).length : 0;
+      const newWords = plainText.trim() ? plainText.trim().split(/\s+/).length : 0;
+      // very lightweight content hash based on JSON length and first 120 chars of text
+      const contentHash = `${JSON.stringify(contentJson).length}-${plainText.slice(0,120)}`;
+      const now = Date.now();
+      if (now - lastVersionWriteRef.current > 5000) {
+        await addDoc(versionsCol, {
+          title: documentTitle || 'Untitled Document',
+          author: null,
+          content: contentJson,
+          plainText,
+          keystrokes: keystrokeBufferRef.current,
+          diffSummary: {
+            prevLength: prevLen,
+            newLength: newLen,
+            deltaLength: newLen - prevLen,
+            prevWords,
+            newWords,
+            deltaWords: newWords - prevWords,
+            contentHash,
+          },
+          createdAt: serverTimestamp(),
+        });
+        prevPlainTextRef.current = plainText;
+        prevContentJsonRef.current = contentJson;
+        // reset keystroke buffer after we persisted it with the version
+        keystrokeBufferRef.current = [];
+        lastVersionWriteRef.current = now;
+      }
+    } catch (e) {
+      // swallow diff/version errors to not block editing
+      // console.warn('version write failed', e);
     }
-    
-    if (name === 'textStyle' && attributes?.fontFamily) {
-      return editor.isActive('textStyle', { fontFamily: attributes.fontFamily });
+    setSavingState('saved');
+    setTimeout(() => setSavingState('idle'), 1200);
+  }
+
+  // Helpers to sanitize filename
+  const buildFilename = useCallback((ext: string) => {
+    const base = (documentTitle || 'document').replace(/[^\w\-]+/g, '_').slice(0, 60) || 'document';
+    return `${base}.${ext}`;
+  }, [documentTitle]);
+
+  // Export current editor HTML to PDF using html2pdf.js
+  const handleExportPdf = useCallback(async () => {
+    if (!editor) return;
+    const html = editor.getHTML();
+    const { default: html2pdf } = await import('html2pdf.js');
+    // Create a container to render html for conversion
+    const container = document.createElement('div');
+    container.style.padding = '1in';
+    container.innerHTML = html;
+    document.body.appendChild(container);
+    try {
+      await (html2pdf() as any)
+        .set({
+          margin: 0,
+          filename: buildFilename('pdf'),
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
+        })
+        .from(container)
+        .save();
+    } finally {
+      document.body.removeChild(container);
     }
-    
-    if (name === 'textAlign' && attributes?.textAlign) {
-      return editor.isActive({ textAlign: attributes.textAlign });
+  }, [editor, buildFilename]);
+
+  // Export current editor HTML to DOCX using html-docx-js
+  const handleExportDocx = useCallback(async () => {
+    if (!editor) return;
+    const html = editor.getHTML();
+    const { default: htmlDocx } = await import('html-docx-js/dist/html-docx');
+    const docHtml = `<!doctype html><html><head><meta charset="utf-8" /></head><body>${html}</body></html>`;
+    const blob = htmlDocx.asBlob(docHtml, {
+      orientation: 'portrait',
+      margins: { top: 720, right: 720, bottom: 720, left: 720 }, // 0.5in margins (twips)
+    });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = buildFilename('docx');
+    document.body.appendChild(link);
+    link.click();
+    URL.revokeObjectURL(link.href);
+    document.body.removeChild(link);
+  }, [editor, buildFilename]);
+
+  useEffect(() => {
+    if (!docId) return;
+    const ref = doc(db, 'docs', docId);
+
+    // Load initial data (once). Prefer latest version if present, otherwise use base doc.
+    (async () => {
+      const snap = await getDoc(ref);
+      // Try latest version
+      const vq = query(collection(ref, 'versions'), orderBy('createdAt', 'desc'), limit(1));
+      const vSnap = await getDocs(vq);
+      const latestVersion = !vSnap.empty ? (vSnap.docs[0].data() as any) : null;
+
+      if (latestVersion && editor) {
+        // Use versioned content, but prefer canonical title from the base doc if available
+        const data = snap.exists() ? (snap.data() as any) : null;
+        const titleToUse = (data?.title && typeof data.title === 'string' && data.title.trim()) ? data.title : (latestVersion.title || documentTitle);
+        setDocumentTitle(titleToUse);
+        if (latestVersion.content) editor.commands.setContent(latestVersion.content);
+        prevPlainTextRef.current = latestVersion.plainText || '';
+        prevContentJsonRef.current = latestVersion.content || null;
+      } else if (snap.exists()) {
+        const data = snap.data() as any;
+        setDocumentTitle(data.title || documentTitle);
+        if (editor && data.content) editor.commands.setContent(data.content);
+        prevPlainTextRef.current = data.plainText || '';
+        prevContentJsonRef.current = data.content || null;
+      } else {
+        // Seed a new document in Firestore
+        const seedContent = editor ? editor.getJSON() : { type: 'doc', content: [] };
+        localSaveRef.current = true;
+        await setDoc(ref, {
+          title: documentTitle || 'Untitled Document',
+          author: null,
+          content: seedContent,
+          plainText: editor ? editor.getText().slice(0, 20000) : '',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+        prevPlainTextRef.current = editor ? editor.getText().slice(0, 20000) : '';
+        prevContentJsonRef.current = seedContent;
+        setTimeout(() => { localSaveRef.current = false; }, 200);
+      }
+    })();
+
+    const unsub = onSnapshot(ref, (snap: DocumentSnapshot<DocumentData>) => {
+      if (!snap.exists()) return;
+      const data = snap.data() as any;
+      // Avoid applying our own local save immediately
+      if (localSaveRef.current) return;
+      // Update title if changed
+      if (data.title && data.title !== documentTitle) setDocumentTitle(data.title);
+      // Update editor content if different
+      if (editor && data.content) {
+        try {
+          const current = editor.getJSON();
+          // naive diff by JSON stringify length/keys
+          if (JSON.stringify(current) !== JSON.stringify(data.content)) {
+            editor.commands.setContent(data.content);
+          }
+        } catch {}
+      }
+    });
+
+    return () => {
+      if(saveTimeout.current) clearTimeout(saveTimeout.current);
+      unsub();
     }
-    
-    return editor.isActive(name, attributes);
-  };
+  }, [docId, editor]);
+
+  // Subscribe to recent versions when the History panel is open
+  useEffect(() => {
+    if (!showHistory) return;
+    const ref = doc(db, 'docs', docId);
+    const versionsRef = collection(ref, 'versions');
+    const q = query(versionsRef, orderBy('createdAt', 'desc'), limit(50));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+      setVersions(list);
+      if (!selectedVersionId && list.length) setSelectedVersionId(list[0].id);
+    });
+    return () => unsub();
+  }, [showHistory, docId, selectedVersionId]);
+
+  // Save title changes to Firestore
+  const handleTopbarTitleChange = useCallback(async (newTitle: string) => {
+    setDocumentTitle(newTitle);
+    const ref = doc(db, 'docs', docId);
+    localSaveRef.current = true;
+    setSavingState('saving');
+    await setDoc(ref, { title: newTitle, updatedAt: serverTimestamp() }, { merge: true });
+    setTimeout(() => { localSaveRef.current = false; }, 200);
+    setSavingState('saved');
+    setTimeout(() => setSavingState('idle'), 1200);
+  }, [docId]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f8f9fa]">
-      {!minimal && (
-        <>
-          <TopBar title={title} />
-          <MenuBar />
-          <Toolbar editor={editor} commands={commands} isActive={isActive} />
-          <Ruler />
-        </>
-      )}
-      
-      <div className="flex-1 overflow-auto">
+    <div className="min-h-screen bg-gray-50 text-black">
+      <div className="sticky top-0 z-20 bg-white shadow-sm">
+        {!minimal && (
+          <TopBar
+            title={documentTitle}
+            onTitleChange={handleTopbarTitleChange}
+            onPrint={() => {
+              if (editor) {
+                triggerNativePrint(editor.getHTML());
+              }
+            }}
+            onExportPdf={handleExportPdf}
+            onExportDocx={handleExportDocx}
+            onToggleHistory={() => setShowHistory(v => !v)}
+            savingState={savingState}
+            onInsertImageFile={handleInsertImageFile}
+            onInsertImageUrl={handleInsertImageUrl}
+            onGenerateCitations={handleGenerateCitations}
+          />
+        )}
+        {!minimal && <Toolbar editor={editor} />}
+      </div>
+      <div className="overflow-auto">
         <div className="py-8 flex justify-center">
-          <div className="bg-white shadow-md w-[816px] min-h-[1056px] border border-gray-200 p-8">
-            <EditorContent 
-              editor={editor} 
-              className={minimal ? "p-0 text-black" : "p-4 max-w-none text-black"}
-            />
+          <div className="w-[816px] min-h-[1056px] p-8 bg-light-gray rounded-lg shadow-sm">
+            <EditorContent editor={editor} className={minimal ? "p-0 text-black" : "p-4 max-w-none text-black"} />
           </div>
         </div>
       </div>
-    </div>
-  );
-};
 
-export default EditorClient;
-          title="Bold (Ctrl+B)"
-          disabled={!editor?.can().chain().focus().toggleBold().run()}
-        >
-          <span className="font-bold">B</span>
-        </button>
-        <button 
-          className={`w-8 h-8 rounded flex items-center justify-center ${isActive('italic') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} 
-          onClick={commands.toggleItalic}
-          title="Italic (Ctrl+I)"
-          disabled={!editor?.can().chain().focus().toggleItalic().run()}
-        >
-          <span className="italic">I</span>
-        </button>
-        <button 
-          className={`w-8 h-8 rounded flex items-center justify-center ${isActive('underline') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} 
-          onClick={commands.toggleUnderline}
-          title="Underline (Ctrl+U)"
-          disabled={!editor?.can().chain().focus().toggleUnderline().run()}
-        >
-          <span className="underline">U</span>
-        </button>
-        <button 
-          className={`w-8 h-8 rounded flex items-center justify-center ${isActive('strike') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} 
-          onClick={commands.toggleStrike}
-          title="Strikethrough (Alt+Shift+5)"
-          disabled={!editor?.can().chain().focus().toggleStrike().run()}
-        >
-          <span className="line-through">S</span>
-        </button>
-      
-      </div>
-      
-      <div className={divider}></div>
-      
-      {/* Lists */}
-      <div className="flex items-center">
-        <button 
-          className={`w-8 h-8 rounded flex items-center justify-center ${isActive('bulletList') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} 
-          onClick={commands.toggleBulletList}
-          title="Bullet List"
-          disabled={!editor?.can().chain().focus().toggleBulletList().run()}
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5 5.5 6.83 5.5 6 4.83 4.5 4 4.5zm0 12c-.83 0-1.5.68-1.5 1.5s.68 1.5 1.5 1.5 1.5-.68 1.5-1.5-.67-1.5-1.5-1.5zM7 19h14v-2H7v2zm0-6h14v-2H7v2zm0-8v2h14V5H7z"/>
-          </svg>
-        </button>
-        <button 
-          className={`w-8 h-8 rounded flex items-center justify-center ${isActive('orderedList') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} 
-          onClick={commands.toggleOrderedList}
-          title="Numbered List"
-          disabled={!editor?.can().chain().focus().toggleOrderedList().run()}
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M2 17h2v.5H3v1h1v.5H2v1h3v-4H2v1zm1-9h1V4H2v1h1v3zm-1 3h1.8L2 13.1v.9h3v-1H3.2L5 10.9V10H2v1zm5-6v2h14V5H7zm0 14h14v-2H7v2zm0-6h14v-2H7v2z"/>
-          </svg>
-        </button>
-      </div>
-      
-      <div className={divider}></div>
-      
-      {/* Headings & Text Styles */}
-      <div className="flex items-center">
-        <select 
-          className="h-8 pl-2 pr-8 text-sm text-gray-800 bg-white border-0 rounded hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          value={isActive('heading', { level: 1 }) ? 'h1' : isActive('heading', { level: 2 }) ? 'h2' : isActive('heading', { level: 3 }) ? 'h3' : 'p'}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (value === 'p') commands.setParagraph();
-            else if (value === 'h1') commands.setHeading(1);
-            else if (value === 'h2') commands.setHeading(2);
-            else if (value === 'h3') commands.setHeading(3);
-          }}
-          title="Text Style"
-        >
-          <option value="p">Normal text</option>
-          <option value="h1">Heading 1</option>
-          <option value="h2">Heading 2</option>
-          <option value="h3">Heading 3</option>
-        </select>
-      </div>
-      
-      <div className={divider}></div>
-      
-      {/* Text Alignment */}
-      <div className="flex items-center">
-        <button 
-          className={`w-8 h-8 rounded flex items-center justify-center ${editor?.isActive({ textAlign: 'left' }) ? 'bg-gray-200' : 'hover:bg-gray-100'}`} 
-          onClick={() => commands.setTextAlign('left')}
-          title="Align Left (Ctrl+Shift+L)"
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M15 15H3v2h12v-2zm0-8H3v2h12V7zM3 13h18v-2H3v2zm0 8h18v-2H3v2zM3 3v2h18V3H3z"/>
-          </svg>
-        </button>
-        <button 
-          className={`w-8 h-8 rounded flex items-center justify-center ${editor?.isActive({ textAlign: 'center' }) ? 'bg-gray-200' : 'hover:bg-gray-100'}`} 
-          onClick={() => commands.setTextAlign('center')}
-          title="Center (Ctrl+Shift+E)"
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M7 15v2h10v-2H7zm-4 4h18v-2H3v2zm0-8h18v-2H3v2zm4-6v2h10V5H7z"/>
-          </svg>
-        </button>
-        <button 
-          className={`w-8 h-8 rounded flex items-center justify-center ${editor?.isActive({ textAlign: 'right' }) ? 'bg-gray-200' : 'hover:bg-gray-100'}`} 
-          onClick={() => commands.setTextAlign('right')}
-          title="Align Right (Ctrl+Shift+R)"
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M3 21h18v-2H3v2zm6-4h12v-2H9v2zm-6-4h18v-2H3v2zm6-4h12V7H9v2zM3 3v2h18V3H3z"/>
-          </svg>
-        </button>
-        <button 
-          className={`w-8 h-8 rounded flex items-center justify-center ${editor?.isActive({ textAlign: 'justify' }) ? 'bg-gray-200' : 'hover:bg-gray-100'}`} 
-          onClick={() => commands.setTextAlign('justify')}
-          title="Justify (Ctrl+Shift+J)"
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M3 21h18v-2H3v2zm0-4h18v-2H3v2zm0-4h18v-2H3v2zm0-4h18V7H3v2zm0-6v2h18V3H3z"/>
-          </svg>
-        </button>
-      </div>
-      
-      <div className={divider}></div>
-      
-      {/* Text Color & Highlight */}
-      <div className="flex items-center">
-        <div className="relative group">
-          <button 
-            className={`w-8 h-8 rounded flex items-center justify-center hover:bg-gray-100`} 
-            title="Text Color"
-          >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M2 20h20v4H2v-4zm3.49-3h2.42l1.8-8H18v-2h-5.16l-.2.95c.39-.27.82-.48 1.28-.6.6-.15 1.24-.1 1.81.15.58.25 1.05.69 1.34 1.25.29.56.37 1.2.23 1.8-.15.6-.53 1.12-1.07 1.47-.53.35-1.17.53-1.8.5-1.04 0-2.04-.5-2.64-1.35l-1.28 5.43H5.5l-1.01-4.9zM12.08 5L12 5.5V8h5.5V5h-5.42z"/>
-            </svg>
-          </button>
-          <div className="absolute hidden group-hover:block bg-white shadow-lg rounded p-2 z-10">
-            <div className="grid grid-cols-5 gap-1">
-              {['#000000', '#434343', '#666666', '#999999', '#B7B7B7', '#FFFFFF', '#980000', '#FF0000', '#FF9900', '#FFFF00', '#00FF00', '#00FFFF', '#4A86E8', '#0000FF', '#9900FF', '#FF00FF'].map(color => (
-                <button
-                  key={color}
-                  className="w-6 h-6 rounded border border-gray-200"
-                  style={{ backgroundColor: color }}
-                  onClick={() => commands.setColor(color)}
-                  title={color}
-                />
-              ))}
-            </div>
-          </div>
+    {/* Right-side History Panel */}
+    {showHistory && (
+      <div className="fixed top-0 right-0 h-full w-[360px] bg-white border-l border-gray-200 shadow-lg z-40 flex flex-col">
+        <div className="p-3 border-b flex items-center justify-between">
+          <div className="font-semibold">Version History</div>
+          <button className="text-sm text-gray-600 hover:text-gray-800" onClick={() => setShowHistory(false)}>Close</button>
         </div>
-        
-        <div className="relative group ml-1">
-          <button 
-            className={`w-8 h-8 rounded flex items-center justify-center hover:bg-gray-100`} 
-            title="Highlight Color"
-          >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M6 14l3 3v5h6v-5l3-3V9H6v5zm5-12h2v3h-2V2zM3.5 5.88l1.41-1.41 2.12 2.12L5.62 8 3.5 5.88zm13.46.71l2.12-2.12 1.41 1.41L18.38 8l-1.42-1.41z"/>
-            </svg>
-          </button>
-          <div className="absolute hidden group-hover:block bg-white shadow-lg rounded p-2 z-10 right-0">
-            <div className="grid grid-cols-5 gap-1">
-              {['#FFFF00', '#FFCC00', '#FF9900', '#FF6600', '#FF0000', '#FF99CC', '#FF66CC', '#CC00CC', '#9900FF', '#6600FF', '#0000FF', '#00CCFF', '#00FFFF', '#00CCCC', '#00CC99', '#00FF00'].map(color => (
-                <button
-                  key={color}
-                  className="w-6 h-6 rounded border border-gray-200"
-                  style={{ backgroundColor: color }}
-                  onClick={() => commands.setHighlight(color)}
-                  title={color}
-                />
+        <div className="flex-1 grid grid-cols-1" style={{ gridTemplateRows: '1fr 1fr' }}>
+          {/* Versions list */}
+          <div className="overflow-auto border-b">
+            <ul className="divide-y divide-gray-100">
+              {versions.map(v => (
+                <li key={v.id} className={`p-3 cursor-pointer hover:bg-gray-50 ${selectedVersionId===v.id? 'bg-blue-50':''}`} onClick={() => setSelectedVersionId(v.id)}>
+                  <div className="text-sm font-medium">{new Date(v.createdAt?.toDate?.() || v.createdAt || Date.now()).toLocaleString()}</div>
+                  <div className="text-xs text-gray-500">Chars: {v.plainText?.length ?? '—'} • Keys: {v.keystrokes?.length ?? 0}</div>
+                  {v.diffSummary && (
+                    <div className="text-[11px] text-gray-500 mt-1">
+                      ΔLen {v.diffSummary.deltaLength} • ΔWords {v.diffSummary.deltaWords}
+                    </div>
+                  )}
+                </li>
               ))}
+              {versions.length===0 && (
+                <li className="p-3 text-sm text-gray-500">No versions yet.</li>
+              )}
+            </ul>
+          </div>
+          {/* Keystrokes viewer */}
+          <div className="overflow-auto">
+            <div className="p-3 border-b font-medium">Keystrokes</div>
+            <div className="p-3 text-xs">
+              {(() => {
+                const current = versions.find(v => v.id === selectedVersionId);
+                const ks = (current?.keystrokes || []) as any[];
+                if (!ks.length) return <div className="text-gray-500">No keystrokes recorded for this version.</div>;
+                return (
+                  <ul className="space-y-1">
+                    {ks.map((k, i) => (
+                      <li key={i} className="flex items-center justify-between">
+                        <span>{new Date(k.t).toLocaleTimeString()} — {k.k}</span>
+                        <span className="text-gray-500">sel[{k.sel?.from}:{k.sel?.to}]</span>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
             </div>
           </div>
         </div>
       </div>
-      
-      <div className={divider}></div>
-      
-      {/* Link */}
-      <div className="flex items-center">
-        <button 
-          className={`w-8 h-8 rounded flex items-center justify-center ${isActive('link') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} 
-          onClick={handleLink}
-          title="Insert Link (Ctrl+K)"
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
-          </svg>
-        </button>
-      </div>
-      
-      <div className={divider}></div>
-      
-      {/* Clear Formatting */}
-      <div className="flex items-center">
-        <button 
-          className="w-8 h-8 rounded flex items-center justify-center hover:bg-gray-100" 
-          onClick={commands.clearFormatting}
-          title="Clear Formatting (Ctrl+\)"
-          disabled={!editor?.can().chain().focus().clearNodes().unsetAllMarks().run()}
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M18.3 5.71a.996.996 0 0 0-1.41 0L12 10.59 7.11 5.7A.996.996 0 1 0 5.7 7.11L10.59 12 5.7 16.89a.996.996 0 1 0 1.41 1.41L12 13.41l4.89 4.89a.996.996 0 1 0 1.41-1.41L13.41 12l4.89-4.89c.38-.38.38-1.02 0-1.4z"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-  );
+    )}
+  </div>
+);
+
 }
-
-
